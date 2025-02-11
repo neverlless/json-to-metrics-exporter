@@ -12,6 +12,10 @@ import (
 func main() {
 	logrus.SetFormatter(&logrus.JSONFormatter{})
 
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("<html><body><h1>Welcome to JSON to Metrics Exporter</h1><p>Use '/metrics?target=YOUR_JSON_ENDPOINT' to collect metrics.</p></body></html>"))
+	})
+
 	http.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		target := r.URL.Query().Get("target")
 		if target == "" {
