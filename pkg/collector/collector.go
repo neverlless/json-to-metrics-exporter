@@ -3,13 +3,14 @@ package collector
 import (
 	"crypto/tls"
 	"encoding/json"
-	"github.com/prometheus/client_golang/prometheus"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // JsonCollector collects metrics from JSON endpoints
@@ -41,7 +42,10 @@ func NewJsonCollector(endpoint string) *JsonCollector {
 
 // Describe sends the super-set of all possible descriptors of metrics collected
 // by this Collector and sends it to the provided channel.
-func (jc *JsonCollector) Describe(ch chan<- *prometheus.Desc) {}
+func (jc *JsonCollector) Describe(ch chan<- *prometheus.Desc) {
+	// This function is intentionally left empty because all metrics are dynamic
+	// and are described during the Collect phase.
+}
 
 // Collect collects metrics from the JSON endpoint
 func (jc *JsonCollector) Collect(ch chan<- prometheus.Metric) {
