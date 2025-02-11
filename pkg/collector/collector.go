@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"github.com/prometheus/client_golang/prometheus"
 	"io/ioutil"
@@ -44,7 +45,13 @@ func (jc *JsonCollector) Describe(ch chan<- *prometheus.Desc) {}
 
 // Collect collects metrics from the JSON endpoint
 func (jc *JsonCollector) Collect(ch chan<- prometheus.Metric) {
-	response, err := http.Get(jc.Endpoint)
+	// Создаем кастомный HTTP клиент с отключенной проверкой сертификатов
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: transport}
+
+	response, err := client.Get(jc.Endpoint)
 	if err != nil || response.StatusCode != http.StatusOK {
 		ch <- prometheus.MustNewConstMetric(
 			prometheus.NewDesc("scrape_success", "", nil, prometheus.Labels{"url": jc.Endpoint}),
