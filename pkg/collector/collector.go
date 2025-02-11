@@ -3,7 +3,7 @@ package collector
 import (
 	"crypto/tls"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"regexp"
@@ -74,7 +74,7 @@ func (jc *JsonCollector) Collect(ch chan<- prometheus.Metric) {
 		prometheus.GaugeValue, 1,
 	)
 
-	body, err := ioutil.ReadAll(response.Body)
+	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		return
 	}
