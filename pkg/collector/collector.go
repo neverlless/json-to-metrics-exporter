@@ -3,14 +3,13 @@ package collector
 import (
 	"crypto/tls"
 	"encoding/json"
+	"github.com/prometheus/client_golang/prometheus"
 	"io"
 	"net/http"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
-
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // JsonCollector collects metrics from JSON endpoints
@@ -92,8 +91,12 @@ func (jc *JsonCollector) parse(data interface{}, ch chan<- prometheus.Metric, pr
 	switch v := data.(type) {
 	case map[string]interface{}:
 		for key, val := range v {
-			newPrefix := jc.correctMetricName(prefix+key) + "_"
-			jc.parse(val, ch, newPrefix)
+			newPrefix := prefix + key
+			if svcMap, isMap := val.(map[string]interface{}); isMap {
+				jc.extractServiceMetrics(newPrefix, svcMap, ch)
+				continue
+			}
+			jc.parse(val, ch, newPrefix+"_")
 		}
 	case string:
 		jc.parseEntry(prefix, v, ch)
@@ -110,6 +113,31 @@ func (jc *JsonCollector) parse(data interface{}, ch chan<- prometheus.Metric, pr
 			jc.parse(item, ch, jc.correctMetricName(prefix+strconv.Itoa(i))+"_")
 		}
 	}
+}
+
+func (jc *JsonCollector) extractServiceMetrics(prefix string, serviceData map[string]interface{}, ch chan<- prometheus.Metric) {
+	for service, status := range serviceData {
+		jc.parseServiceMetric(prefix, service, status, ch)
+	}
+}
+
+func (jc *JsonCollector) parseServiceMetric(prefix, service string, status interface{}, ch chan<- prometheus.Metric) {
+	var val float64
+	if strVal, ok := status.(string); ok {
+		for _, regex := range jc.HealthyRegex {
+			if regex.MatchString(strVal) {
+				val = 1
+				break
+			}
+		}
+	}
+
+	name := jc.Prefix + "services"
+	labels := prometheus.Labels{"service": service, "category": prefix, "url": jc.Endpoint}
+	ch <- prometheus.MustNewConstMetric(
+		prometheus.NewDesc(name, "", nil, labels),
+		prometheus.GaugeValue, val,
+	)
 }
 
 func (jc *JsonCollector) parseEntry(metadata string, value interface{}, ch chan<- prometheus.Metric) {
