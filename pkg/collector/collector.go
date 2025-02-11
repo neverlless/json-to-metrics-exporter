@@ -2,13 +2,13 @@ package collector
 
 import (
 	"encoding/json"
+	"github.com/prometheus/client_golang/prometheus"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
-
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // JsonCollector collects metrics from JSON endpoints
@@ -96,7 +96,7 @@ func (jc *JsonCollector) parse(data interface{}, ch chan<- prometheus.Metric, pr
 		jc.parseEntry(prefix, floatVal, ch)
 	case []interface{}:
 		for i, item := range v {
-			jc.parse(item, ch, jc.correctMetricName(prefix+string(i))+"_")
+			jc.parse(item, ch, jc.correctMetricName(prefix+strconv.Itoa(i))+"_")
 		}
 	}
 }
