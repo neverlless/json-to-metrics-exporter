@@ -7,7 +7,23 @@ This is a JSON to Prometheus metrics exporter written in Go. It converts JSON da
 - Dynamic JSON endpoint fetching
 - Configurable health status with regex
 - Compatible with Prometheus scraping
+- HTTP probe metrics (duration, status code, success)
 - Lightweight and efficient
+
+## Metrics
+
+The exporter provides the following metrics:
+
+### Standard Probe Metrics
+
+- **`probe_http_duration_seconds`** - Duration of HTTP request in seconds
+- **`probe_http_status_code`** - HTTP status code returned by the target
+- **`probe_success`** - Indicates whether the probe succeeded (1 = success, 0 = failure)
+
+### JSON-based Metrics
+
+- **`jsonmetric_services`** - Service health status parsed from JSON (with labels: service, category, url)
+- **`jsonmetric_*`** - Dynamic metrics parsed from JSON structure based on the response content
 
 ## Installation
 

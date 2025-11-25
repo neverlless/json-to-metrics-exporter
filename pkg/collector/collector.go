@@ -3,74 +3,109 @@ package collector
 import (
 	"crypto/tls"
 	"encoding/json"
-	"github.com/prometheus/client_golang/prometheus"
 	"io"
 	"net/http"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
-// JsonCollector collects metrics from JSON endpoints
-// Implements prometheus.Collector
-
+// JsonCollector collects metrics from JSON endpoints.
+// It implements prometheus.Collector interface.
 type JsonCollector struct {
-	Endpoint     string
-	HealthyRegex []*regexp.Regexp
-	Prefix       string
-	ShowType     bool
+	endpoint     string
+	healthyRegex []*regexp.Regexp
+	prefix       string
+	client       *http.Client
 }
 
-// NewJsonCollector initializes JsonCollector with regex from environment
+// NewJsonCollector creates a new JsonCollector with regex patterns from environment.
 func NewJsonCollector(endpoint string) *JsonCollector {
-	// Default regex values
 	regexString := os.Getenv("HEALTHY_REGEX")
 	if regexString == "" {
 		regexString = "OK|success"
 	}
 	regex := regexp.MustCompile(regexString)
 
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   10 * time.Second,
+	}
+
 	return &JsonCollector{
-		Endpoint:     endpoint,
-		HealthyRegex: []*regexp.Regexp{regex},
-		Prefix:       "jsonmetric_",
-		ShowType:     false,
+		endpoint:     endpoint,
+		healthyRegex: []*regexp.Regexp{regex},
+		prefix:       "jsonmetric_",
+		client:       client,
 	}
 }
 
 // Describe sends the super-set of all possible descriptors of metrics collected
 // by this Collector and sends it to the provided channel.
 func (jc *JsonCollector) Describe(ch chan<- *prometheus.Desc) {
-	// This function is intentionally left empty because all metrics are dynamic
+	// Intentionally left empty because all metrics are dynamic
 	// and are described during the Collect phase.
 }
 
-// Collect collects metrics from the JSON endpoint
+// Collect collects metrics from the JSON endpoint.
 func (jc *JsonCollector) Collect(ch chan<- prometheus.Metric) {
-	// Создаем кастомный HTTP клиент с отключенной проверкой сертификатов
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Transport: transport}
+	start := time.Now()
+	
+	response, err := jc.client.Get(jc.endpoint)
+	duration := time.Since(start).Seconds()
 
-	response, err := client.Get(jc.Endpoint)
-	if err != nil || response.StatusCode != http.StatusOK {
-		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("scrape_success", "", nil, prometheus.Labels{"url": jc.Endpoint}),
-			prometheus.GaugeValue, 0,
-		)
+	// Emit probe_http_duration_seconds metric
+	ch <- prometheus.MustNewConstMetric(
+		prometheus.NewDesc(
+			"probe_http_duration_seconds",
+			"Duration of HTTP request in seconds",
+			nil,
+			prometheus.Labels{"url": jc.endpoint},
+		),
+		prometheus.GaugeValue,
+		duration,
+	)
+
+	if err != nil {
+		jc.emitFailureMetrics(ch, 0)
 		return
 	}
 	defer response.Body.Close()
 
+	// Emit probe_http_status_code metric
 	ch <- prometheus.MustNewConstMetric(
-		prometheus.NewDesc("response_code", "", nil, prometheus.Labels{"url": jc.Endpoint}),
-		prometheus.GaugeValue, float64(response.StatusCode),
+		prometheus.NewDesc(
+			"probe_http_status_code",
+			"HTTP status code returned by the target",
+			nil,
+			prometheus.Labels{"url": jc.endpoint},
+		),
+		prometheus.GaugeValue,
+		float64(response.StatusCode),
 	)
+
+	if response.StatusCode != http.StatusOK {
+		jc.emitFailureMetrics(ch, float64(response.StatusCode))
+		return
+	}
+
+	// Emit probe_success metric
 	ch <- prometheus.MustNewConstMetric(
-		prometheus.NewDesc("scrape_success", "", nil, prometheus.Labels{"url": jc.Endpoint}),
-		prometheus.GaugeValue, 1,
+		prometheus.NewDesc(
+			"probe_success",
+			"Indicates whether the probe succeeded",
+			nil,
+			prometheus.Labels{"url": jc.endpoint},
+		),
+		prometheus.GaugeValue,
+		1,
 	)
 
 	body, err := io.ReadAll(response.Body)
@@ -79,12 +114,37 @@ func (jc *JsonCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	var jsonData interface{}
-	err = json.Unmarshal(body, &jsonData)
-	if err != nil {
+	if err := json.Unmarshal(body, &jsonData); err != nil {
 		return
 	}
 
 	jc.parse(jsonData, ch, "")
+}
+
+// emitFailureMetrics emits probe_success=0 when probe fails.
+func (jc *JsonCollector) emitFailureMetrics(ch chan<- prometheus.Metric, statusCode float64) {
+	ch <- prometheus.MustNewConstMetric(
+		prometheus.NewDesc(
+			"probe_success",
+			"Indicates whether the probe succeeded",
+			nil,
+			prometheus.Labels{"url": jc.endpoint},
+		),
+		prometheus.GaugeValue,
+		0,
+	)
+	if statusCode > 0 {
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc(
+				"probe_http_status_code",
+				"HTTP status code returned by the target",
+				nil,
+				prometheus.Labels{"url": jc.endpoint},
+			),
+			prometheus.GaugeValue,
+			statusCode,
+		)
+	}
 }
 
 func (jc *JsonCollector) parse(data interface{}, ch chan<- prometheus.Metric, prefix string) {
@@ -124,7 +184,7 @@ func (jc *JsonCollector) extractServiceMetrics(prefix string, serviceData map[st
 func (jc *JsonCollector) parseServiceMetric(prefix, service string, status interface{}, ch chan<- prometheus.Metric) {
 	var val float64
 	if strVal, ok := status.(string); ok {
-		for _, regex := range jc.HealthyRegex {
+		for _, regex := range jc.healthyRegex {
 			if regex.MatchString(strVal) {
 				val = 1
 				break
@@ -132,11 +192,12 @@ func (jc *JsonCollector) parseServiceMetric(prefix, service string, status inter
 		}
 	}
 
-	name := jc.Prefix + "services"
-	labels := prometheus.Labels{"service": service, "category": prefix, "url": jc.Endpoint}
+	name := jc.prefix + "services"
+	labels := prometheus.Labels{"service": service, "category": prefix, "url": jc.endpoint}
 	ch <- prometheus.MustNewConstMetric(
-		prometheus.NewDesc(name, "", nil, labels),
-		prometheus.GaugeValue, val,
+		prometheus.NewDesc(name, "Service health status", nil, labels),
+		prometheus.GaugeValue,
+		val,
 	)
 }
 
@@ -144,8 +205,8 @@ func (jc *JsonCollector) parseEntry(metadata string, value interface{}, ch chan<
 	var val float64
 	var labels map[string]string
 	if strVal, ok := value.(string); ok {
-		labels = map[string]string{"text": strVal, "url": jc.Endpoint}
-		for _, regex := range jc.HealthyRegex {
+		labels = map[string]string{"text": strVal, "url": jc.endpoint}
+		for _, regex := range jc.healthyRegex {
 			if regex.MatchString(strVal) {
 				val = 1
 				break
@@ -157,15 +218,15 @@ func (jc *JsonCollector) parseEntry(metadata string, value interface{}, ch chan<
 		val = 0
 	}
 
-	name := jc.Prefix + metadata
+	name := jc.prefix + metadata
 	ch <- prometheus.MustNewConstMetric(
-		prometheus.NewDesc(name, "", nil, labels),
-		prometheus.GaugeValue, val,
+		prometheus.NewDesc(name, "Parsed JSON metric", nil, labels),
+		prometheus.GaugeValue,
+		val,
 	)
 }
 
 func (jc *JsonCollector) correctMetricName(name string) string {
-	// Replace non-standard characters with '_' and avoid trailing '_'
 	reg := regexp.MustCompile(`[^a-zA-Z0-9]+`)
 	cleanName := reg.ReplaceAllString(name, "_")
 	return strings.TrimSuffix(cleanName, "_")
