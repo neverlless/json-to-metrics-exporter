@@ -1,0 +1,20 @@
+version: 2
+
+builds:
+  - main: ./cmd
+    binary: json-to-metrics
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+checksum:
+  name_template: checksums.txt
