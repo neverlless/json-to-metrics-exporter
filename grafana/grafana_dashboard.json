@@ -135,24 +135,24 @@
           "datasource": {
             "uid": "$DS"
           },
-          "expr": "scrape_success",
+          "expr": "probe_success",
           "format": "table",
           "hide": false,
           "instant": true,
           "interval": "",
-          "legendFormat": "{{instance}}",
+          "legendFormat": "{{url}}",
           "refId": "A"
         },
         {
           "datasource": {
             "uid": "$DS"
           },
-          "expr": "response_code",
+          "expr": "probe_http_status_code",
           "format": "table",
           "hide": false,
           "instant": true,
           "interval": "",
-          "legendFormat": "{{instance}}",
+          "legendFormat": "{{url}}",
           "refId": "B"
         }
       ],
@@ -324,7 +324,7 @@
             "uid": "$DS"
           },
           "editorMode": "code",
-          "expr": "{instance=~\"[[URL]]\", __name__=~\"jsonmetric_.*\"}",
+          "expr": "{url=~\"[[URL]]\", __name__=~\"jsonmetric_.*\"}",
           "format": "table",
           "instant": true,
           "interval": "",
@@ -391,13 +391,13 @@
           "type": "prometheus",
           "uid": "$DS"
         },
-        "definition": "label_values(scrape_success,url)",
+        "definition": "label_values(probe_success,url)",
         "hide": 0,
         "includeAll": true,
         "multi": true,
         "name": "URL",
         "options": [],
-        "query": "label_values(scrape_success,url)",
+        "query": "label_values(probe_success,url)",
         "refresh": 2,
         "regex": "",
         "skipUrlSync": false,
