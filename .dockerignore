@@ -1,0 +1,6 @@
+.git
+.github
+.ansible
+grafana
+*.md
+LICENSE

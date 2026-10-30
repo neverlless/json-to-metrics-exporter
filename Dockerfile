@@ -1,5 +1,5 @@
-# Start from latest golang base image
-FROM golang:1.23.3-alpine AS build
+# Start from golang base image
+FROM golang:1.27.3-alpine3.24 AS build
 
 # Set the Current Working Directory inside the container
 WORKDIR /app
@@ -14,15 +14,20 @@ RUN go mod download
 COPY . .
 
 # Build the Go app
-RUN go build -o json-to-metrics ./cmd/
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o json-to-metrics ./cmd/
 
 # Start a new stage from scratch
-FROM alpine:3.12
+FROM alpine:3.24.3
 
-WORKDIR /root/
+WORKDIR /app
 
 # Copy the Pre-built binary file from the previous stage
 COPY --from=build /app/json-to-metrics .
+
+# Run as an unprivileged user
+USER nobody
+
+EXPOSE 9908
 
 # Command to run the executable
 CMD ["./json-to-metrics"]
