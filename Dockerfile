@@ -17,7 +17,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o json-to-metrics ./cmd/
 
 # Start a new stage from scratch
-FROM alpine:3.24.3
+FROM alpine:3.24.4
 
 WORKDIR /app
 
